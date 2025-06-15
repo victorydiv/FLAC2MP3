@@ -1,4 +1,3 @@
-
 # FLAC2MP3 Utility
 
 ## Overview
@@ -49,7 +48,7 @@
 
 - **PowerShell 5.1+** (Windows)
 - **ffmpeg** and **ffprobe** executables
-- **TagLibSharp.dll** (for advanced ID3 tag reading)
+- **TagLibSharp.dll** ([GitHub Repository](https://github.com/mono/taglib-sharp)) (for advanced ID3 tag reading)
 - **PSWriteHTML** PowerShell module (for HTML reports)
 - Optional: **Advanced Renamer** and **MP3Tag** applications
 
