@@ -182,7 +182,7 @@ function Show-Menu {
         Clear-Host
         Write-Host "FLAC2MP3 Utility"
         Write-Host "================"
-        Write-Host "1.  Start Monitoring FLAC Folder(BROKEN)"
+        Write-Host "1.  Start Monitoring FLAC Folder"
         Write-Host "2.  Copy and Organize MP3 Files"
         Write-Host "3.  Delete Empty Folders in FLAC Folder"
         Write-Host "4.  Display Folders in FLAC Directory"
@@ -199,7 +199,7 @@ function Show-Menu {
         Write-Host ""
         $option = Read-Host "Select an option"
         switch ($option) {
-            '1'  { Start-MonitoringFLACFolder }
+            '1'  { Start-Monitoring }
             '2'  { Copy-And-Organize-MP3 }
             '3'  { Delete-EmptyFolders }
             '4'  { Display-Folders }
@@ -563,148 +563,147 @@ function Delete-EmptyFolders {
 
 # Monitoring Function
 function Start-Monitoring {
-    Write-Host "Starting monitoring..."
-    $stopMonitoring = $false
+    Write-Host "Monitoring $flacFolder and subfolders for new FLAC and WMA files. Press 'x' to exit monitoring." -ForegroundColor Cyan
 
-    # Open the FLAC folder in Windows Explorer
-    if (Test-Path -Path $flacFolder) {
-        Write-Host "Opening FLAC folder in Windows Explorer: $flacFolder"
-        Start-Process -FilePath explorer.exe -ArgumentList "`"$flacFolder`""
-    } else {
-        Write-Warning "FLAC folder does not exist. Please check the folder path."
-        return
-    }
+    $fsw = New-Object System.IO.FileSystemWatcher
+    $fsw.Path = $flacFolder
+    $fsw.IncludeSubdirectories = $true
+    $fsw.Filter = "*.*"
+    $fsw.EnableRaisingEvents = $true
 
-    try {
-        $FileFilter = '*.flac'
-        $IncludeSubfolders = $true
-        $AttributeFilter = [IO.NotifyFilters]::FileName, [IO.NotifyFilters]::LastWrite
+    $onCreated = Register-ObjectEvent $fsw Created -Action {
+        $regexPattern = "[\[\]\\/:*?""<>|{}\(\)']"
 
-        $watcher = New-Object -TypeName System.IO.FileSystemWatcher -Property @{
-            Path = $flacFolder
-            Filter = $FileFilter
-            IncludeSubdirectories = $IncludeSubfolders
-            NotifyFilter = $AttributeFilter
-        }
+        # Registry settings
+        $registryKey = "HKCU:\Software\FLAC2MP3"
+        $minBitrate = (Get-ItemProperty -Path $registryKey -Name MinBitrate -ErrorAction SilentlyContinue).MinBitrate
+        if (-not $minBitrate) { $minBitrate = 192 }
+        $ffmpegPath = (Get-ItemProperty -Path $registryKey -Name FfmpegPath -ErrorAction SilentlyContinue).FfmpegPath
+        if (-not $ffmpegPath) { $ffmpegPath = "ffmpeg" }
+        $ffprobePath = (Get-ItemProperty -Path $registryKey -Name FfprobePath -ErrorAction SilentlyContinue).FfprobePath
+        if (-not $ffprobePath) { $ffprobePath = "ffprobe" }
+        $mp3Folder = (Get-ItemProperty -Path $registryKey -Name Mp3Folder -ErrorAction SilentlyContinue).Mp3Folder
+        if (-not $mp3Folder) { $mp3Folder = $env:USERPROFILE }
 
+        $fullPath = $Event.SourceEventArgs.FullPath
+        $ext = [System.IO.Path]::GetExtension($fullPath)
+        if ($ext -ieq ".flac" -or $ext -ieq ".wma") {
+            $fileName = [System.IO.Path]::GetFileName($fullPath)
+            $dirName = [System.IO.Path]::GetDirectoryName($fullPath)
+            $baseName = [System.IO.Path]::GetFileNameWithoutExtension($fileName)
+            $extension = [System.IO.Path]::GetExtension($fileName)
 
-        # Define the action for file system events
-        $action = {
-            $details = $event.SourceEventArgs
-            $FullPath = $details.FullPath
-            $ChangeType = $details.ChangeType
-
-            if ($ChangeType -eq 'Created' -and $FullPath -like "*.flac") {
+            # Rename if needed
+            if ($baseName -match $regexPattern) {
+                $safeBaseName = $baseName -replace $regexPattern, "_"
+                $safeName = "${safeBaseName}${extension}"
+                $safePath = Join-Path $dirName $safeName
                 try {
-                    $totalFilesCreated++
-                    $flacFile = $FullPath
-                    $mp3File = [System.IO.Path]::Combine(
-                        [System.IO.Path]::GetDirectoryName($FullPath),
-                        [System.IO.Path]::GetFileNameWithoutExtension($FullPath)) + ".mp3"
-
-                    # Ensure PSScriptRoot is set
-                    if (-not $PSScriptRoot) {
-                        $PSScriptRoot = (Get-Location).Path
-                        Write-Host "Fallback PSScriptRoot is set to: $PSScriptRoot" -ForegroundColor Yellow
-                    }
-
-                    # Construct the ffmpeg arguments
-                    $lameArgs = "-i `"$flacFile`" -ab ${minBitrate}k -map_metadata 0 -id3v2_version 3 `"$mp3File`""
-                    Write-Host "lameArgs: $lameArgs" -ForegroundColor Yellow
-
-
-                    # Execute ffmpeg and display output
-                    try {
-                        $process = Start-Process -FilePath $ffmpegPath -ArgumentList $lameArgs -NoNewWindow -Wait -PassThru
-                        if ($process.ExitCode -ne 0) {
-                            Write-Warning "ffmpeg failed to process file."
-                        }
-                    } catch {
-                        Write-Warning "Failed to start ffmpeg process. Error: $_"
-                    }
-
-                    # Verify MP3 file exists in the destination folder
-                    if (Test-Path -Path $mp3File) {
-                        # Extract Artist and Album metadata using ffprobe
-                        try {
-                            $artist = & $ffprobePath -v error -show_entries format_tags=artist -of default=noprint_wrappers=1:nokey=1 $mp3File
-                            if ($artist) { $artist = $artist.Trim() } else { Write-Warning "ffprobe returned no artist for $mp3File"; $artist = "Unknown Artist" }
-
-                            $album = & $ffprobePath -v error -show_entries format_tags=album -of default=noprint_wrappers=1:nokey=1 $mp3File
-                            if ($album) { $album = $album.Trim() } else { Write-Warning "ffprobe returned no album for $mp3File"; $album = "Unknown Album" }
-                        } catch {
-                            Write-Warning "Failed to extract metadata from MP3 file: $mp3File. Error: $_"
-                            $artist = "Unknown Artist"
-                            $album  = "Unknown Album"
-                        }
-
-                        # Ensure the MP3 folder exists
-                        if (-not (Test-Path -Path $mp3Folder)) {
-                            New-Item -ItemType Directory -Path $mp3Folder -Force | Out-Null
-                        }
-
-                        # Create the destination folder structure (Artist\Album)
-                        $destinationFolder = [System.IO.Path]::Combine($mp3Folder, $artist, $album)
-                        if (-not (Test-Path -Path $destinationFolder)) {
-                            New-Item -ItemType Directory -Path $destinationFolder -Force | Out-Null
-                        }
-
-                        # Move the MP3 file to the destination folder
-                        $destinationPath = [System.IO.Path]::Combine($destinationFolder, [System.IO.Path]::GetFileName($mp3File))
-                        try {
-                            Move-Item -Path $mp3File -Destination $destinationPath -Force
-                            Write-Host "Moved MP3 file to: $destinationPath" -ForegroundColor Green
-
-                            # Delete the original FLAC file only after successful move
-                            Remove-Item -Path $flacFile -Force
-                            Write-Host "Processed and deleted FLAC file: $flacFile" -ForegroundColor Green
-                            $totalFilesProcessed++
-                        } catch {
-                            Write-Warning "Failed to move MP3 file: $mp3File. Error: $_"
-                        }
-                    } else {
-                        Write-Warning "MP3 file not found after processing: $mp3File. FLAC file not deleted."
-                    }
-
-
-
+                    Rename-Item -Path $fullPath -NewName $safeName -ErrorAction Stop
+                    Write-Host "Renamed file: ${fileName} -> ${safeName}" -ForegroundColor Yellow
+                    Write-Host "New file detected: $safePath" -ForegroundColor Green
+                    $fullPath = $safePath
+                    $fileName = $safeName
+                    $baseName = $safeBaseName
                 } catch {
-                    Write-Warning "Error processing file: $FullPath. Error: $_"
+                    Write-Host "Failed to rename ${fileName}: ${_}" -ForegroundColor Red
+                    return
                 }
+            } else {
+                Write-Host "New file detected: $fullPath" -ForegroundColor Green
+            }
+
+            # Convert to MP3
+            $mp3Path = [System.IO.Path]::Combine($dirName, "$baseName.mp3")
+            $ffmpegArgs = @(
+                "-y"
+                "-i"; "$fullPath"
+                "-b:a"; "${minBitrate}k"
+                "$mp3Path"
+            )
+            Write-Host "Converting to MP3: $mp3Path (min bitrate: $minBitrate kbps)" -ForegroundColor Cyan
+            $ffmpegResult = & $ffmpegPath @ffmpegArgs 2>&1
+
+            if (Test-Path $mp3Path) {
+                Write-Host "Conversion successful. Deleting original file: $fullPath" -ForegroundColor Green
+                Remove-Item $fullPath -Force
+
+                # Extract artist and album using ffprobe (ID3v2: TPE1=artist, TALB=album)
+                $ffprobeArgs = @(
+                    "-v", "error"
+                    "-show_entries", "format_tags=TPE1,TALB"
+                    "-of", "default=noprint_wrappers=1:nokey=1"
+                    "$mp3Path"
+                )
+                $ffprobeOutput = & $ffprobePath @ffprobeArgs 2>&1
+
+                # Debug: Show all ffprobe tag output
+                Write-Host "ffprobe tag output for ${mp3Path}:" -ForegroundColor Magenta
+                $ffprobeOutput | ForEach-Object { Write-Host $_ -ForegroundColor Magenta }
+
+                $artist = ""
+                $album = ""
+                if ($ffprobeOutput.Count -ge 1) { $artist = $ffprobeOutput[0].Trim() }
+                if ($ffprobeOutput.Count -ge 2) { $album = $ffprobeOutput[1].Trim() }
+
+                # If not found, try artist and album
+                if (-not $artist -or $artist -eq "") {
+                    $ffprobeArgs = @(
+                        "-v", "error"
+                        "-show_entries", "format_tags=artist"
+                        "-of", "default=noprint_wrappers=1:nokey=1"
+                        "$mp3Path"
+                    )
+                    $artist = (& $ffprobePath @ffprobeArgs 2>&1 | Select-Object -First 1).Trim()
+                }
+                if (-not $album -or $album -eq "") {
+                    $ffprobeArgs = @(
+                        "-v", "error"
+                        "-show_entries", "format_tags=album"
+                        "-of", "default=noprint_wrappers=1:nokey=1"
+                        "$mp3Path"
+                    )
+                    $album = (& $ffprobePath @ffprobeArgs 2>&1 | Select-Object -First 1).Trim()
+                }
+
+                if (-not $artist) { $artist = "Unknown Artist" }
+                if (-not $album) { $album = "Unknown Album" }
+
+                # Clean up artist/album folder names
+                $artistSafe = $artist -replace $regexPattern, "_"
+                $albumSafe = $album -replace $regexPattern, "_"
+
+                $destDir = Join-Path $mp3Folder $artistSafe
+                $destDir = Join-Path $destDir $albumSafe
+                if (-not (Test-Path $destDir)) { New-Item -Path $destDir -ItemType Directory | Out-Null }
+
+                $destPath = Join-Path $destDir ([System.IO.Path]::GetFileName($mp3Path))
+                try {
+                    Move-Item -Path $mp3Path -Destination $destPath -Force
+                    Write-Host "Moved MP3 to: $destPath" -ForegroundColor Green
+                } catch {
+                    Write-Host "Failed to move MP3: $_" -ForegroundColor Red
+                }
+            } else {
+                Write-Host "Conversion failed for $fullPath" -ForegroundColor Red
+                Write-Host $ffmpegResult
             }
         }
-
-        # Register the event handlers
-        $handlers = . {
-            Register-ObjectEvent -InputObject $watcher -EventName Created -Action $action
-        }
-
-        $watcher.EnableRaisingEvents = $true
-        Write-Host "Monitoring started. Press 'x' to stop and return to the menu."
-
-        # Keep monitoring until the user stops it
-        while (-not $stopMonitoring) {
-            if ([Console]::KeyAvailable) {
-                $key = [Console]::ReadKey($true).KeyChar
-                if ($key -eq 'x') {
-                    Write-Host "`n'x' detected. Stopping monitoring..."
-                    $stopMonitoring = $true
-                }
-            }
-            Start-Sleep -Milliseconds 500
-        }
-    } catch {
-        Write-Host "An error occurred during monitoring: $_"
-    } finally {
-        # Cleanup
-        $watcher.EnableRaisingEvents = $false
-        $handlers | ForEach-Object {
-            Unregister-Event -SourceIdentifier $_.Name
-        }
-        $handlers | Remove-Job
-        $watcher.Dispose()
-        Write-Warning "Monitoring stopped. Returning to menu."
     }
+
+    while ($true) {
+        if ([System.Console]::KeyAvailable) {
+            $key = [System.Console]::ReadKey($true)
+            if ($key.KeyChar -eq 'x' -or $key.KeyChar -eq 'X') {
+                break
+            }
+        }
+        Start-Sleep -Milliseconds 200
+    }
+
+    Unregister-Event -SourceIdentifier $onCreated.Name
+    $fsw.Dispose()
+    Write-Host "Stopped monitoring. Returning to main menu." -ForegroundColor Yellow
 }
 
 # Function to Refresh Plex Library
