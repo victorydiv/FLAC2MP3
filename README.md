@@ -33,14 +33,51 @@ If there is no ID3 tag information in the source file, the file move will fail. 
   4. **Display Folders in FLAC Directory**  
      Lists all folders within the FLAC directory.
   5. **Options Menu**  
-     Allows updating of all configuration settings.
+     Allows updating of all configuration settings. The following options are available:
+
+     - **Set FLAC Folder Location:**  
+       Specify the folder to monitor for FLAC files.  
+       *Initially set to a default directory or left blank until user selection.*
+
+     - **Set MP3 Folder Location:**  
+       Specify the folder where converted MP3 files will be saved.  
+       *Initially set to a default directory or left blank until user selection.*
+
+     - **Set ffmpeg Location:**  
+       Set the path to the ffmpeg executable used for audio conversion.  
+       *Initially set to a common install location or left blank until user selection.*
+
+     - **Set ffprobe Location:**  
+       Set the path to the ffprobe executable for media file analysis.  
+       *Initially set to a common install location or left blank until user selection.*
+
+     - **Set Plex Token:**  
+       Enter your Plex authentication token for integration.  
+       *Initially left blank.*
+
+     - **Set Minimum Bitrate:**  
+       Define the minimum bitrate for audio files to be processed.  
+       *Initially set to a default value (e.g., 128kbps).*
+
+     - **Set Advanced Renamer Path:**  
+       Set the path to the Advanced Renamer tool for batch file renaming.  
+       *Initially left blank.*
+
+     - **Set MP3Tag Path:**  
+       Set the path to the MP3Tag tool for editing MP3 metadata.  
+       *Initially left blank.*
+
+     - **Update MP3 File Count:**  
+       Refresh and display the current count of MP3 files in the output folder.  
+       *Initially displays the count upon first setup or when
   6. **Refresh Plex Library**  
-     Sends a refresh request to a Plex Media Server library section.
+     Sends a refresh request to a Plex Media Server library section.  
+     *A token from your Plex server is required for this option to function. You must set your Plex token in the Options Menu for this feature
   7. **Scan for Low-Bitrate Files**  
      Scans a selected folder for MP3 files below a user-defined minimum bitrate.
   8. **Scan and Delete Low-Bitrate Files**  
      Scans and optionally deletes MP3 files below the minimum bitrate.
-  9. **Open Other Applications** *(BROKEN)*  
+  9. **Open Other Applications**   
      Launches Advanced Renamer or MP3Tag if configured.
   10. **Scan Folder and Generate HTML Report**  
       Scans a folder and generates an HTML report of MP3 metadata using PSWriteHTML.
