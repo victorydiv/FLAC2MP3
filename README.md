@@ -13,8 +13,19 @@
   - Prompts for missing configuration values on first run or via the Options Menu.
 
 - **Main Menu Functions**
-  1. **Start Monitoring FLAC Folder** *(BROKEN)*  
-     Monitors the FLAC folder for new files and processes them automatically.
+  1. **Start Monitoring FLAC Folder**  
+     When you start monitoring the FLAC folder, the application continuously watches the specified directory for any new or updated audio files. When a FLAC or WMA file is detected, the following activities are performed:
+
+     - The file is checked to confirm it is a supported format (FLAC or WMA).
+     - The file is added to a processing queue.
+     - The application converts the file to MP3 format using your chosen settings.
+     - Metadata from the original file is preserved and transferred to the MP3.
+     - The converted MP3 is saved to your selected output folder.
+     - Logs or notifications are generated for each conversion or error.
+**Note for Option 1:**  
+If there is no ID3 tag information in the source file, the file move will fail. In this case, you will need to use a tool like mp3tag to add the necessary tag information before the file can be moved successfully.
+
+     Both WMA and FLAC files are supported for automatic conversion to MP3.
   2. **Copy and Organize MP3 Files**  
      Renames MP3 files to remove invalid characters, extracts metadata, and moves them into an organized folder structure (`Artist\Album`).
   3. **Delete Empty Folders in FLAC Folder**  
@@ -78,3 +89,4 @@
 ## Disclaimer
 
 This script is provided as-is. Use at your own risk. Always back up your music library before performing batch operations.
+
